@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Cover Letter Generator - Santiago",
+  "version": "1.0",
+  "description": "Genera cover letters personalizadas desde ofertas de trabajo (n8n + GPT-4o). Funciona en LinkedIn, Indeed y cualquier sitio.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["https://YOUR_N8N_INSTANCE/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Generar Cover Letter"
+  }
+}

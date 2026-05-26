@@ -1,0 +1,455 @@
+{
+  "name": "Cover Letter Generator - LinkedIn",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cover-letter",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "id": "cl-webhook",
+      "name": "Receive Job",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        304
+      ],
+      "webhookId": "cover-letter-hook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet payload;\nlet bodyText = raw.body;\nif (typeof bodyText === 'string') { try { payload = JSON.parse(bodyText); } catch(e) { payload = { description: bodyText }; } }\nelse if (bodyText && typeof bodyText === 'object') { payload = bodyText; }\nelse { payload = raw; }\nlet questions = payload.questions;\nif (typeof questions === 'string') questions = questions.split('\\n');\nif (!Array.isArray(questions)) questions = [];\nquestions = questions.map(q => String(q || '').trim()).filter(Boolean).slice(0, 15);\nreturn [{ json: {\n  mode: (payload.mode === 'score' ? 'score' : 'apply'),\n  title: (payload.title || '').toString().substring(0, 300),\n  company: (payload.company || '').toString().substring(0, 200),\n  description: (payload.description || '').toString().substring(0, 8000),\n  url: (payload.url || '').toString(),\n  questions: questions\n}}];"
+      },
+      "id": "cl-parse",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $input.item.json;\nconst mode = job.mode || 'apply';\nconst PERFIL = \"PERFIL DE SANTIAGO:\\n- Santiago Cione, 20 años, Buenos Aires Argentina. Español nativo, inglés fluido. Remoto only.\\n- AI Automation Specialist @ Desorbitante (agencia de Madrid, remoto, desde Mar 2026): pipeline de datos multi-fuente (Meta Ads/SalesRobot/Instantly -> n8n OAuth2/webhooks -> Supabase -> BigQuery -> Looker) para 6 clientes; CRM Instantly->GoHighLevel (onboarding 8h->2h); SalesRobot->Slack (-60% revisión manual).\\n- Co-Founder & CTO @ Gercio (SaaS de restaurantes, desde Nov 2025): Next.js 14 + Supabase + n8n self-hosted + agente GPT-4o-mini + Mercado Pago + Telegram. Pedidos 5min->30seg.\\n- Stack: n8n (avanzado, self-hosted VPS), APIs Claude/OpenAI (prompt engineering, agentes en prod), Supabase/PostgreSQL/BigQuery, Next.js/React/TS, Node, Python, OAuth2/webhooks/REST, Docker, Git.\\n- APIs con experiencia: Meta Ads, Mercado Pago, GoHighLevel, SalesRobot, Instantly, Telegram, Slack, Google Sheets.\\n- Educación: Ingeniería Informática ITBA (1er año). LinkedIn: linkedin.com/in/santiago-cione-7b3a50173. Email: your-email@example.com\\n- Experiencia en automatización/n8n: ~1.5 años en producción. Disponibilidad: inmediata, full remoto, cualquier timezone.\\n- Salario: NUNCA reveles tu salario actual ni tu situación financiera. Posicioná según el mercado de la empresa: US o startup bien financiada => USD 3500-5000/mes; europea => USD 2500-4000; LATAM => USD 1500-3000. Da SIEMPRE un rango (no número fijo) y enmarcalo en el valor que aportás, no en tu historia salarial. Si preguntan tu salario actual, desviá hacia tu expectativa.\\n- Usar \\\"Specialist\\\" no \\\"Engineer\\\" (sin título de grado; \\\"Ingeniero\\\" está protegido en España).\\nRED FLAGS a detectar: pide Senior/Lead/5+ años, on-site (no remoto), equity-only, rol puramente comercial/no técnico, requiere relocación.\";\nconst TASK_SCORE = \"TAREA (modo SCORE): Evaluá SOLO el fit del perfil con esta oferta. NO escribas cover letter ni respuestas.\\nfit_score 0-100 honesto: si pide 5+ años o es Lead/senior, bajá el score y marcá el red flag.\\nDevolvé SOLO JSON válido: {\\\"job_title\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"language\\\":\\\"es|en\\\",\\\"fit_score\\\":0,\\\"top_reasons\\\":[\\\"r1\\\",\\\"r2\\\",\\\"r3\\\"],\\\"red_flags\\\":[\\\"...\\\"],\\\"which_cv\\\":\\\"ES|EN\\\",\\\"salary_note\\\":\\\"una línea de cómo posicionar el salario\\\"}\";\nconst TASK_APPLY = \"TAREA (modo APPLY): Escribí una cover letter y, si hay preguntas de la aplicación, respondé cada una.\\ncover_letter: ~200-250 palabras, específica a ESTA oferta, con logros REALES de Santiago (números), en el idioma de la oferta, humana, sin inventar.\\nanswers: para cada pregunta, respuesta en PRIMERA PERSONA como Santiago, en el idioma de la oferta, concreta y honesta. Preguntas sí/no o numéricas: directo y breve. Abiertas: 2-4 frases. Si no hay preguntas, [].\\nDevolvé SOLO JSON válido: {\\\"job_title\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"language\\\":\\\"es|en\\\",\\\"which_cv\\\":\\\"ES|EN\\\",\\\"salary_note\\\":\\\"\\\",\\\"cover_letter\\\":\\\"...\\\",\\\"answers\\\":[{\\\"question\\\":\\\"\\\",\\\"answer\\\":\\\"\\\"}]}\";\nconst q = Array.isArray(job.questions) ? job.questions.filter(x => x && x.trim()) : [];\nconst task = mode === 'score' ? TASK_SCORE : TASK_APPLY;\nconst maxTokens = mode === 'score' ? 800 : 3000;\nconst system = PERFIL + '\\n\\n' + task;\nlet user = 'OFERTA DE TRABAJO:\\n' + (job.title ? ('Título: ' + job.title + '\\n') : '') + (job.company ? ('Empresa: ' + job.company + '\\n') : '') + (job.url ? ('URL: ' + job.url + '\\n') : '') + '\\nTexto:\\n' + job.description;\nif (mode === 'apply' && q.length) { user += '\\n\\nPREGUNTAS DE LA APLICACIÓN (responder cada una en answers):\\n' + q.map((x, i) => (i + 1) + '. ' + x).join('\\n'); }\nuser += '\\n\\nResponde ÚNICAMENTE con el objeto JSON pedido, sin texto adicional ni bloques de código markdown.';\nconst body = JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: system, messages: [ { role: 'user', content: user } ] });\nreturn { json: Object.assign({}, job, { _llm_body: body, mode: mode }) };"
+      },
+      "id": "cl-build",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json._llm_body }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        }
+      },
+      "id": "cl-gpt",
+      "name": "Generate with Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        912,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $('Build Prompt').item.json;\nconst mode = job.mode || 'apply';\nconst resp = $input.item.json;\nlet s;\ntry { let _raw=(resp.content&&resp.content[0]&&resp.content[0].text)||''; let _m=String(_raw).match(/\\{[\\s\\S]*\\}/); s=JSON.parse(_m?_m[0]:_raw); }\ncatch(e){ s={ job_title:'',company_name:'',language:'es',fit_score:0,top_reasons:['Error IA: '+e.message],red_flags:[],which_cv:'EN',salary_note:'',cover_letter:'',answers:[] }; }\nconst esc=(x)=>String(x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst title=String(job.title||s.job_title||'Oferta').substring(0,480);\nconst company=String(job.company||s.company_name||'').substring(0,240);\nconst extId=String(job.url||('cl-'+Date.now())).split('?')[0].substring(0,255);\n\nif (mode==='score') {\n  return { json: {\n    mode:'score', source:'linkedin_score', external_id:extId,\n    title:title, company:company, url:job.url, description:String(job.description||'').substring(0,4000),\n    score:Number(s.fit_score)||0, verdict:s.language||'',\n    top_reasons:s.top_reasons||[], red_flags:s.red_flags||[],\n    recommendation:s.which_cv||'', salary_range:String(s.salary_note||'').substring(0,255), status:'scored',\n    fit_score:Number(s.fit_score)||0, which_cv:s.which_cv||'', language:s.language||'', salary_note:s.salary_note||''\n  }};\n}\n\nconst answers=Array.isArray(s.answers)?s.answers:[];\nconst baseMsg='📝 <b>'+esc(title)+'</b>\\n🏢 '+esc(company)+'\\nCV: '+esc(s.which_cv||'')+'  |  '+String(s.language||'').toUpperCase()+'\\n\\n✉️ <b>Cover letter:</b>\\n'+esc(s.cover_letter||'');\nconst ansSection=answers.length?('\\n\\n❓ <b>Respuestas:</b>\\n'+answers.map((a,i)=>'<b>'+(i+1)+'. '+esc(a.question)+'</b>\\n'+esc(a.answer)).join('\\n\\n')):'';\nlet fullMsg=baseMsg+ansSection;\nif (fullMsg.length>4000) fullMsg=baseMsg+'\\n\\n❓ '+answers.length+' respuesta(s) — vé la extensión.';\nreturn { json: {\n  mode:'apply', external_id:extId, title:title, company:company, url:job.url,\n  which_cv:s.which_cv||'', language:s.language||'', salary_note:s.salary_note||'',\n  cover_letter:s.cover_letter||'', answers:answers, telegram_message:fullMsg\n}};"
+      },
+      "id": "cl-format",
+      "name": "Parse & Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $('Parse & Format').item.json.telegram_message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cl-tg",
+      "name": "Send Cover Letter",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        208
+      ],
+      "webhookId": "d602d71d-be81-45ee-aa4d-51044deb7934"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "job_applications",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "external_id",
+              "fieldValue": "={{ $json.external_id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "company",
+              "fieldValue": "={{ $json.company }}"
+            },
+            {
+              "fieldId": "url",
+              "fieldValue": "={{ $json.url }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $json.description }}"
+            },
+            {
+              "fieldId": "score",
+              "fieldValue": "={{ $json.score }}"
+            },
+            {
+              "fieldId": "verdict",
+              "fieldValue": "={{ $json.verdict }}"
+            },
+            {
+              "fieldId": "top_reasons",
+              "fieldValue": "={{ JSON.stringify($json.top_reasons) }}"
+            },
+            {
+              "fieldId": "red_flags",
+              "fieldValue": "={{ JSON.stringify($json.red_flags) }}"
+            },
+            {
+              "fieldId": "recommendation",
+              "fieldValue": "={{ $json.recommendation }}"
+            },
+            {
+              "fieldId": "salary_range",
+              "fieldValue": "={{ $json.salary_range }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            }
+          ]
+        }
+      },
+      "id": "cl-save",
+      "name": "Save Score",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cl-tgtrigger",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        540
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "webhookId": "cl-tg-trigger-001"
+    },
+    {
+      "id": "cl-parsetg",
+      "name": "Parse Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        540
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const m = $input.first().json;\nconst text = (m.message && m.message.text) || m.text || '';\nreturn [{ json: { mode: 'apply', title: '', company: '', description: String(text).substring(0, 8000), url: '', questions: [] } }];"
+      }
+    },
+    {
+      "id": "cl-respond",
+      "name": "Respond to Extension",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Parse & Format').item.json) }}",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cl-saveapp",
+      "name": "Save App Row",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        480
+      ],
+      "parameters": {
+        "operation": "create",
+        "tableId": "applications",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "external_id",
+              "fieldValue": "={{ $json.external_id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "company",
+              "fieldValue": "={{ $json.company }}"
+            },
+            {
+              "fieldId": "url",
+              "fieldValue": "={{ $json.url }}"
+            },
+            {
+              "fieldId": "which_cv",
+              "fieldValue": "={{ $json.which_cv }}"
+            },
+            {
+              "fieldId": "language",
+              "fieldValue": "={{ $json.language }}"
+            },
+            {
+              "fieldId": "salary_note",
+              "fieldValue": "={{ $json.salary_note }}"
+            },
+            {
+              "fieldId": "cover_letter",
+              "fieldValue": "={{ $json.cover_letter }}"
+            },
+            {
+              "fieldId": "answers",
+              "fieldValue": "={{ JSON.stringify($json.answers) }}"
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "cl-isapply",
+      "name": "Is Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "apply",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Job": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate with Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Format": {
+      "main": [
+        [
+          {
+            "node": "Is Apply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Telegram": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate with Claude": {
+      "main": [
+        [
+          {
+            "node": "Parse & Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Apply?": {
+      "main": [
+        [
+          {
+            "node": "Save App Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save App Row": {
+      "main": [
+        [
+          {
+            "node": "Send Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Respond to Extension",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Score": {
+      "main": [
+        [
+          {
+            "node": "Respond to Extension",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  }
+}
