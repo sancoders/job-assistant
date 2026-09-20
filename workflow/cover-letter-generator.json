@@ -5,44 +5,40 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "cover-letter",
-        "options": {},
-        "responseMode": "responseNode"
+        "responseMode": "responseNode",
+        "options": {}
       },
-      "id": "cl-webhook",
       "name": "Receive Job",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
         240,
-        304
-      ],
-      "webhookId": "cover-letter-hook"
+        144
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nlet payload;\nlet bodyText = raw.body;\nif (typeof bodyText === 'string') { try { payload = JSON.parse(bodyText); } catch(e) { payload = { description: bodyText }; } }\nelse if (bodyText && typeof bodyText === 'object') { payload = bodyText; }\nelse { payload = raw; }\nlet questions = payload.questions;\nif (typeof questions === 'string') questions = questions.split('\\n');\nif (!Array.isArray(questions)) questions = [];\nquestions = questions.map(q => String(q || '').trim()).filter(Boolean).slice(0, 15);\nreturn [{ json: {\n  mode: (payload.mode === 'score' ? 'score' : 'apply'),\n  title: (payload.title || '').toString().substring(0, 300),\n  company: (payload.company || '').toString().substring(0, 200),\n  description: (payload.description || '').toString().substring(0, 8000),\n  url: (payload.url || '').toString(),\n  questions: questions\n}}];"
+        "jsCode": "// Parse Input  (mode: runOnceForAllItems)\nconst raw = $input.first().json;\nlet payload;\nconst bodyText = raw.body;\nif (typeof bodyText === 'string') { try { payload = JSON.parse(bodyText); } catch (e) { payload = { description: bodyText }; } }\nelse if (bodyText && typeof bodyText === 'object') { payload = bodyText; }\nelse { payload = raw; }\n\nlet questions = payload.questions;\nif (typeof questions === 'string') questions = questions.split('\\n');\nif (!Array.isArray(questions)) questions = [];\nquestions = questions.map(q => String(q || '').trim()).filter(Boolean).slice(0, 15);\n\n// El cap era 8000 y con un slice de cabeza, que es el peor corte posible: los\n// requisitos (idioma, residencia, anios pedidos) viven al final de la oferta.\n// La extension ya manda las dos puntas cuando no entra, pero el workflow no\n// puede confiar en que el cliente lo haya hecho: Telegram y cualquier otro\n// caller entran por aca igual. Misma politica de los dos lados.\nconst MAX = 30000, HEAD = 8000, TAIL = 12000;\nlet description = (payload.description || '').toString();\n\n// LinkedIn mete su selector de idiomas al final del texto de la pagina:\n// decenas de lineas tipo \"Portugues (Portuguese)\", \"Polski (Polish)\". Eso no es\n// parte del aviso y encima disparaba el bloqueo por idioma. Se corta cualquier\n// corrida de 4 o mas lineas seguidas con esa forma.\ndescription = description.replace(\n  /(?:^[ \\t]*\\S[^\\n]{0,28}\\([A-Z][a-zA-Z]+\\)[ \\t]*\\n){4,}/gm, '');\nlet truncated = !!payload.description_truncated;\nconst originalChars = Number(payload.description_chars_original) || description.length;\n\nif (description.length > MAX) {\n  const n = description.length;\n  description = description.slice(0, HEAD) +\n    '\\n\\n[... ' + (n - HEAD - TAIL) + ' caracteres omitidos del medio ...]\\n\\n' +\n    description.slice(n - TAIL);\n  truncated = true;\n}\n\nreturn [{\n  json: {\n    mode: (payload.mode === 'score' ? 'score' : 'apply'),\n    // Toggle del panel. Por defecto true, asi cualquier caller viejo (Telegram)\n    // sigue recibiendo la carta como antes.\n    want_letter: payload.want_letter !== false,\n    title: (payload.title || '').toString().substring(0, 300),\n    company: (payload.company || '').toString().substring(0, 200),\n    description: description,\n    url: (payload.url || '').toString(),\n    questions: questions,\n    description_source: (payload.description_source || '').toString().substring(0, 120),\n    description_truncated: truncated,\n    description_chars_original: originalChars\n  }\n}];\n"
       },
-      "id": "cl-parse",
       "name": "Parse Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         464,
-        304
+        144
       ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const job = $input.item.json;\nconst mode = job.mode || 'apply';\nconst PERFIL = \"PERFIL DE SANTIAGO:\\n- Santiago Cione, 20 años, Buenos Aires Argentina. Español nativo, inglés fluido. Remoto only.\\n- AI Automation Specialist @ Desorbitante (agencia de Madrid, remoto, desde Mar 2026): pipeline de datos multi-fuente (Meta Ads/SalesRobot/Instantly -> n8n OAuth2/webhooks -> Supabase -> BigQuery -> Looker) para 6 clientes; CRM Instantly->GoHighLevel (onboarding 8h->2h); SalesRobot->Slack (-60% revisión manual).\\n- Co-Founder & CTO @ Gercio (SaaS de restaurantes, desde Nov 2025): Next.js 14 + Supabase + n8n self-hosted + agente GPT-4o-mini + Mercado Pago + Telegram. Pedidos 5min->30seg.\\n- Stack: n8n (avanzado, self-hosted VPS), APIs Claude/OpenAI (prompt engineering, agentes en prod), Supabase/PostgreSQL/BigQuery, Next.js/React/TS, Node, Python, OAuth2/webhooks/REST, Docker, Git.\\n- APIs con experiencia: Meta Ads, Mercado Pago, GoHighLevel, SalesRobot, Instantly, Telegram, Slack, Google Sheets.\\n- Educación: Ingeniería Informática ITBA (1er año). LinkedIn: linkedin.com/in/santiago-cione-7b3a50173. Email: your-email@example.com\\n- Experiencia en automatización/n8n: ~1.5 años en producción. Disponibilidad: inmediata, full remoto, cualquier timezone.\\n- Salario: NUNCA reveles tu salario actual ni tu situación financiera. Posicioná según el mercado de la empresa: US o startup bien financiada => USD 3500-5000/mes; europea => USD 2500-4000; LATAM => USD 1500-3000. Da SIEMPRE un rango (no número fijo) y enmarcalo en el valor que aportás, no en tu historia salarial. Si preguntan tu salario actual, desviá hacia tu expectativa.\\n- Usar \\\"Specialist\\\" no \\\"Engineer\\\" (sin título de grado; \\\"Ingeniero\\\" está protegido en España).\\nRED FLAGS a detectar: pide Senior/Lead/5+ años, on-site (no remoto), equity-only, rol puramente comercial/no técnico, requiere relocación.\";\nconst TASK_SCORE = \"TAREA (modo SCORE): Evaluá SOLO el fit del perfil con esta oferta. NO escribas cover letter ni respuestas.\\nfit_score 0-100 honesto: si pide 5+ años o es Lead/senior, bajá el score y marcá el red flag.\\nDevolvé SOLO JSON válido: {\\\"job_title\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"language\\\":\\\"es|en\\\",\\\"fit_score\\\":0,\\\"top_reasons\\\":[\\\"r1\\\",\\\"r2\\\",\\\"r3\\\"],\\\"red_flags\\\":[\\\"...\\\"],\\\"which_cv\\\":\\\"ES|EN\\\",\\\"salary_note\\\":\\\"una línea de cómo posicionar el salario\\\"}\";\nconst TASK_APPLY = \"TAREA (modo APPLY): Escribí una cover letter y, si hay preguntas de la aplicación, respondé cada una.\\ncover_letter: ~200-250 palabras, específica a ESTA oferta, con logros REALES de Santiago (números), en el idioma de la oferta, humana, sin inventar.\\nanswers: para cada pregunta, respuesta en PRIMERA PERSONA como Santiago, en el idioma de la oferta, concreta y honesta. Preguntas sí/no o numéricas: directo y breve. Abiertas: 2-4 frases. Si no hay preguntas, [].\\nDevolvé SOLO JSON válido: {\\\"job_title\\\":\\\"\\\",\\\"company_name\\\":\\\"\\\",\\\"language\\\":\\\"es|en\\\",\\\"which_cv\\\":\\\"ES|EN\\\",\\\"salary_note\\\":\\\"\\\",\\\"cover_letter\\\":\\\"...\\\",\\\"answers\\\":[{\\\"question\\\":\\\"\\\",\\\"answer\\\":\\\"\\\"}]}\";\nconst q = Array.isArray(job.questions) ? job.questions.filter(x => x && x.trim()) : [];\nconst task = mode === 'score' ? TASK_SCORE : TASK_APPLY;\nconst maxTokens = mode === 'score' ? 800 : 3000;\nconst system = PERFIL + '\\n\\n' + task;\nlet user = 'OFERTA DE TRABAJO:\\n' + (job.title ? ('Título: ' + job.title + '\\n') : '') + (job.company ? ('Empresa: ' + job.company + '\\n') : '') + (job.url ? ('URL: ' + job.url + '\\n') : '') + '\\nTexto:\\n' + job.description;\nif (mode === 'apply' && q.length) { user += '\\n\\nPREGUNTAS DE LA APLICACIÓN (responder cada una en answers):\\n' + q.map((x, i) => (i + 1) + '. ' + x).join('\\n'); }\nuser += '\\n\\nResponde ÚNICAMENTE con el objeto JSON pedido, sin texto adicional ni bloques de código markdown.';\nconst body = JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTokens, system: system, messages: [ { role: 'user', content: user } ] });\nreturn { json: Object.assign({}, job, { _llm_body: body, mode: mode }) };"
+        "jsCode": "// Build Prompt  (mode: runOnceForEachItem)\n// El PERFIL ya no se hardcodea aca: viene de public.profile_facts filtrado por\n// verified_bool, armado en Screen Blockers. Para corregir un dato del perfil se\n// edita una fila en la base, no este nodo.\n\nconst job = $input.item.json;\nconst mode = job.mode || 'apply';\nconst PERFIL = job._perfil;\nif (!PERFIL) throw new Error('Llegue sin _perfil: Screen Blockers no corrio');\n\n// Reglas anti invencion. El modelo tiende a redondear y a inventar porcentajes\n// que suenan bien, y eso despues se pega en una aplicacion real.\nconst REGLAS = [\n  'REGLAS DURAS (no negociables):',\n  '1. No escribas ningun numero, porcentaje, cantidad ni duracion que no aparezca textualmente en PERFIL. Prohibido derivar, redondear, sumar o inventar porcentajes.',\n  '2. Si la oferta pide un dato numerico que no esta en PERFIL, escribi el placeholder [FALTA DATO: que falta] en vez de estimar.',\n  '2bis. EXCEPCION UNICA a la regla 1: el campo salary_posted se copia TEXTUAL de la oferta. Es una cita, no una afirmacion tuya. Si la oferta no dice sueldo, salary_posted va vacio. Prohibido estimarlo, convertirlo de anual a mensual, o completarlo con lo que suele pagar el mercado.',\n  '3. No uses guion largo ni guion medio. Usa coma, punto, dos puntos o parentesis.',\n  '4. ORTOGRAFIA POR IDIOMA, las dos mitades importan:',\n  '   - En INGLES: sin caracteres acentuados.',\n  '   - En ESPANOL: ortografia COMPLETA y correcta. Acentos donde corresponde\\n' +\n  '     (automatización, gestión, integración, más, también, después, día,\\n' +\n  '     técnico, práctica, años) y la letra ñ donde va (español, diseño, año,\\n' +\n  '     enseñar, campaña). Una carta en espaniol sin acentos se lee como escrita\\n' +\n  '     por un bot y es motivo de descarte. NUNCA escribas \"anios\" ni \"espaniol\":\\n' +\n  '     se escriben \"años\" y \"español\".',\n  '   Si el PERFIL o estas instrucciones tienen alguna palabra mal acentuada,\\n' +\n  '   corregila al escribir. No imites ese error.',\n  '6. Nunca menciones la edad de Santiago ni el anio en que nacio.',\n  '5. No inventes experiencia, clientes, herramientas ni empresas que no esten en PERFIL.'\n].join('\\n');\n\n// La calibracion del fit NO se define aca: viene dentro del PERFIL, en la fila\n// profile_facts.fit_calibration_rule, que es la MISMA que usa el pase diario de\n// las 07:15. Antes cada camino tenia su propio criterio y el mismo aviso sacaba\n// 92 en el panel y 72 en el board.\nconst TASK_SCORE = 'TAREA (modo SCORE): Evalua SOLO el fit del perfil con esta oferta. NO escribas cover letter ni respuestas.\\n' +\n  'Aplica la CALIBRACION DEL FIT SCORE que viene en el PERFIL, tal cual esta escrita, sin ablandarla ni endurecerla.\\n' +\n  'SUELDO ESTIMADO (salary_est): decime cuanto PAGA el puesto, no cuanto conviene pedir. Son dos cosas distintas y la segunda no entra aca.\\n' +\n  '1. Si el aviso publica sueldo, ese es el dato y no se toca: min y max son el rango del aviso tal cual (2500 a 3700 se guarda 2500 y 3700, no 3700 y 3700). Si publica un solo numero, min = max = ese numero. basis \"publicado en el aviso\", conf \"alta\". Aca NO se aplica la regla de cuanto conviene pedir: esa dice que pedir y este campo dice que paga.\\n' +\n  '2. Si no lo publica, elegi familia y seniority de la REFERENCIA DE MERCADO y angostá a un rango de EXACTAMENTE 500 USD de ancho con las senales del aviso: pais de la empresa, anios que pide, profundidad del stack, agencia o producto, full time o por horas.\\n' +\n  '3. basis nombra la familia y el nivel de la referencia y la senal que te movio dentro de la banda.\\n' +\n  '4. Si el aviso no alcanza para ubicarlo fino, ampliá hasta 1500 de ancho, conf \"baja\", y escribí en basis que falto. Un rango ancho honesto vale mas que uno angosto inventado. Dejá salary_est en null SOLO si no podes ni identificar la familia de rol; si podes nombrar la familia, siempre devolvé un rango.\\n' +\n  '5. PROHIBIDO un numero que no salga de la REFERENCIA DE MERCADO o del propio aviso.\\n' +\n  'Devolve SOLO JSON valido: {\"job_title\":\"\",\"company_name\":\"\",\"language\":\"es|en\",\"fit_score\":0,\"top_reasons\":[\"r1\",\"r2\",\"r3\"],\"red_flags\":[\"...\"],\"which_cv\":\"ES|EN\",\"salary_est\":{\"min\":0,\"max\":0,\"basis\":\"\",\"conf\":\"alta|media|baja\"},\"salary_posted\":\"el sueldo tal como lo publica el aviso, textual y con su moneda y periodo, o cadena vacia si el aviso no lo dice\",\"salary_note\":\"una linea de como posicionar el salario, aplicando la REGLA DE SALARIO del PERFIL\"}';\n\nconst TASK_APPLY = 'TAREA (modo APPLY): Escribi una cover letter y, si hay preguntas de la aplicacion, responde cada una.\\n' +\n  'cover_letter: 200-250 palabras, especifica a ESTA oferta, con logros REALES de PERFIL, en el idioma de la oferta, humana.\\n' +\n  'answers: para cada pregunta, respuesta en PRIMERA PERSONA como Santiago, en el idioma de la oferta, concreta y honesta. Preguntas si/no o numericas: directo y breve. Abiertas: 2-4 frases. Si no hay preguntas, [].\\n' +\n  'Devolve SOLO JSON valido: {\"job_title\":\"\",\"company_name\":\"\",\"language\":\"es|en\",\"which_cv\":\"ES|EN\",\"salary_posted\":\"\",\"salary_note\":\"\",\"cover_letter\":\"...\",\"answers\":[{\"question\":\"\",\"answer\":\"\"}]}';\n\nconst TASK_APPLY_SIN_CARTA = 'TAREA (modo APPLY SIN COVER LETTER): NO escribas cover letter. Dejala como cadena vacia. Respondé unicamente las preguntas de la aplicacion.\\n' +\n  'answers: para cada pregunta, respuesta en PRIMERA PERSONA como Santiago, en el idioma de la oferta, concreta y honesta. Preguntas si/no o numericas: directo y breve. Abiertas: 2-4 frases.\\n' +\n  'Devolve SOLO JSON valido: {\"job_title\":\"\",\"company_name\":\"\",\"language\":\"es|en\",\"which_cv\":\"ES|EN\",\"salary_posted\":\"\",\"salary_note\":\"\",\"cover_letter\":\"\",\"answers\":[{\"question\":\"\",\"answer\":\"\"}]}';\n\nconst q = Array.isArray(job.questions) ? job.questions.filter(x => x && String(x).trim()) : [];\nconst wantLetter = job.want_letter !== false;\nconst task = mode === 'score' ? TASK_SCORE : (wantLetter ? TASK_APPLY : TASK_APPLY_SIN_CARTA);\n\n// 3000 cortaba el JSON a la mitad cuando la aplicacion tenia muchas preguntas.\n// Sin carta el techo baja: una carta de 250 palabras es la mayor parte de la\n// salida. 600 de base mas 350 por pregunta, entre 800 y 4000.\nconst maxTokens = mode === 'score' ? 1500\n  : (wantLetter ? 8000 : Math.max(800, Math.min(4000, 600 + 350 * q.length)));\n// La referencia de mercado solo hace falta cuando hay que estimar sueldo.\nconst MERCADO = job._mercado || '';\nconst system = PERFIL + '\\n\\n' + REGLAS + '\\n\\n' +\n  (mode === 'score' && MERCADO ? MERCADO + '\\n\\n' : '') + task;\n\nlet user = 'OFERTA DE TRABAJO:\\n' +\n  (job.title ? ('Titulo: ' + job.title + '\\n') : '') +\n  (job.company ? ('Empresa: ' + job.company + '\\n') : '') +\n  (job.url ? ('URL: ' + job.url + '\\n') : '');\n\nif (job.description_truncated) {\n  user += 'NOTA: la descripcion venia mas larga que el limite. Se conservaron el principio y el final, que es donde viven los requisitos. El medio se omitio y esta marcado.\\n';\n}\nif (Array.isArray(job.frictions) && job.frictions.length) {\n  user += 'FRICCIONES detectadas automaticamente (tenelas en cuenta, no las cites textual): ' +\n    job.frictions.map(f => f.reason).join('; ') + '\\n';\n}\n\nuser += '\\nTexto:\\n' + job.description;\n\nif (mode === 'apply' && q.length) {\n  user += '\\n\\nPREGUNTAS DE LA APLICACION (responder cada una en answers):\\n' +\n    q.map((x, i) => (i + 1) + '. ' + x).join('\\n');\n}\nuser += '\\n\\nResponde UNICAMENTE con el objeto JSON pedido, sin texto adicional ni bloques de codigo markdown.';\n\n// El modo SCORE no necesita Sonnet: es una clasificacion, y Haiku la hace igual\n// de bien (lo comprueba el workflow de fit por IA, que corre con Haiku y acierta).\n// Sonnet queda solo para APPLY, donde lo que se juega es la redaccion de la carta.\n// Con 34 llamadas en dos dias, casi todas de score, esto es la diferencia entre\n// dos dolares y unos centavos.\nconst MODELO = mode === 'score' ? 'claude-haiku-4-5' : 'claude-sonnet-4-6';\n\n// SCORE va con temperature 0, APPLY se deja como estaba. Sin temperature la API\n// usa 1 y el mismo aviso puntuado dos veces da numeros distintos: medido el\n// 07/09 en el pase diario, el aviso 4575 dio 68, 68, 52, 68 en cuatro llamadas\n// identicas. Una carta puede variar sin problema; un numero que decide si el\n// aviso se promueve, no. Este es el segundo camino de scoring y tenia el mismo\n// agujero que el pase diario.\nconst body = JSON.stringify(Object.assign({\n  model: MODELO,\n  max_tokens: maxTokens,\n  system: system,\n  messages: [{ role: 'user', content: user }]\n}, mode === 'score' ? { temperature: 0 } : {}));\n\nreturn { json: Object.assign({}, job, { _llm_body: body, mode: mode, _max_tokens: maxTokens }) };\n"
       },
-      "id": "cl-build",
       "name": "Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        688,
-        304
+        1360,
+        336
       ]
     },
     {
@@ -51,13 +47,6 @@
         "url": "https://api.anthropic.com/v1/messages",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "anthropicApi",
-        "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ $json._llm_body }}",
-        "options": {
-          "timeout": 60000
-        },
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -66,180 +55,143 @@
               "value": "2023-06-01"
             }
           ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json._llm_body }}",
+        "options": {
+          "timeout": 60000
         }
       },
-      "id": "cl-gpt",
       "name": "Generate with Claude",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        912,
-        304
-      ]
+        1584,
+        336
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "anthropicApi": {
+          "id": "YOUR_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic account"
+        }
+      },
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const job = $('Build Prompt').item.json;\nconst mode = job.mode || 'apply';\nconst resp = $input.item.json;\nlet s;\ntry { let _raw=(resp.content&&resp.content[0]&&resp.content[0].text)||''; let _m=String(_raw).match(/\\{[\\s\\S]*\\}/); s=JSON.parse(_m?_m[0]:_raw); }\ncatch(e){ s={ job_title:'',company_name:'',language:'es',fit_score:0,top_reasons:['Error IA: '+e.message],red_flags:[],which_cv:'EN',salary_note:'',cover_letter:'',answers:[] }; }\nconst esc=(x)=>String(x||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nconst title=String(job.title||s.job_title||'Oferta').substring(0,480);\nconst company=String(job.company||s.company_name||'').substring(0,240);\nconst extId=String(job.url||('cl-'+Date.now())).split('?')[0].substring(0,255);\n\nif (mode==='score') {\n  return { json: {\n    mode:'score', source:'linkedin_score', external_id:extId,\n    title:title, company:company, url:job.url, description:String(job.description||'').substring(0,4000),\n    score:Number(s.fit_score)||0, verdict:s.language||'',\n    top_reasons:s.top_reasons||[], red_flags:s.red_flags||[],\n    recommendation:s.which_cv||'', salary_range:String(s.salary_note||'').substring(0,255), status:'scored',\n    fit_score:Number(s.fit_score)||0, which_cv:s.which_cv||'', language:s.language||'', salary_note:s.salary_note||''\n  }};\n}\n\nconst answers=Array.isArray(s.answers)?s.answers:[];\nconst baseMsg='📝 <b>'+esc(title)+'</b>\\n🏢 '+esc(company)+'\\nCV: '+esc(s.which_cv||'')+'  |  '+String(s.language||'').toUpperCase()+'\\n\\n✉️ <b>Cover letter:</b>\\n'+esc(s.cover_letter||'');\nconst ansSection=answers.length?('\\n\\n❓ <b>Respuestas:</b>\\n'+answers.map((a,i)=>'<b>'+(i+1)+'. '+esc(a.question)+'</b>\\n'+esc(a.answer)).join('\\n\\n')):'';\nlet fullMsg=baseMsg+ansSection;\nif (fullMsg.length>4000) fullMsg=baseMsg+'\\n\\n❓ '+answers.length+' respuesta(s) — vé la extensión.';\nreturn { json: {\n  mode:'apply', external_id:extId, title:title, company:company, url:job.url,\n  which_cv:s.which_cv||'', language:s.language||'', salary_note:s.salary_note||'',\n  cover_letter:s.cover_letter||'', answers:answers, telegram_message:fullMsg\n}};"
+        "jsCode": "// Parse & Format  (mode: runOnceForEachItem)\n\nconst job = $('Screen Blockers').item.json;\nconst mode = job.mode || 'apply';\nconst v = $input.item.json;\nconst s = v._llm;\n\nconst esc = (x) => String(x == null ? '' : x)\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst title = String(job.title || s.job_title || 'Oferta').substring(0, 480);\nconst company = String(job.company || s.company_name || '').substring(0, 240);\nconst extId = job.external_id || String(job.url || ('cl-' + Date.now())).split('?')[0].substring(0, 255);\n\n// ---- avisos que van arriba de todo, antes del texto\nconst avisos = [];\nif (v.unverified_numbers && v.unverified_numbers.length) {\n  avisos.push('⚠️ Numeros SIN respaldo en PERFIL: ' +\n    v.unverified_numbers.map(u => u.number).join(', ') +\n    ' — verificalos antes de mandar.');\n}\nif (job.description_truncated) {\n  avisos.push('⚠️ Descripcion truncada (' + (job.description_chars_original || '?') +\n    ' chars). Se mandaron el principio y el final.');\n}\nif (v._stop_reason === 'max_tokens') {\n  avisos.push('⚠️ La respuesta se corto por limite de tokens.');\n}\nif (v._parse_error) {\n  avisos.push('⚠️ El modelo no devolvio JSON valido: ' + v._parse_error);\n}\nif (job.description_source && job.description_source === 'body-fallback') {\n  avisos.push('⚠️ La descripcion salio del fallback del body, puede traer ruido.');\n}\nif (Array.isArray(job.frictions) && job.frictions.length) {\n  avisos.push('• Fricciones: ' + job.frictions.map(f => f.reason).join('; '));\n}\n\nif (mode === 'score') {\n  return {\n    json: {\n      mode: 'score', source: 'linkedin_score', external_id: extId,\n      title: title, company: company, url: job.url || '',\n      description: String(job.description || '').substring(0, 4000),\n      score: Number(s.fit_score) || 0, verdict: s.language || '',\n      top_reasons: s.top_reasons || [], red_flags: s.red_flags || [],\n      recommendation: s.which_cv || '',\n      salary_posted: String(s.salary_posted || '').substring(0, 120),\n      salary_est_min: (s.salary_est && s.salary_est.min != null) ? Math.round(Number(s.salary_est.min) || 0) : '',\n      salary_est_max: (s.salary_est && s.salary_est.max != null) ? Math.round(Number(s.salary_est.max) || 0) : '',\n      salary_est_basis: String((s.salary_est && s.salary_est.basis) || '').substring(0, 400),\n      // Mismo criterio que el trigger de la base: un rango ancho no puede\n      // declararse \"media\". Si no se aplicara aca, el panel diria una confianza\n      // y el board otra para la misma fila.\n      salary_est_conf: (function () {\n        const e = s.salary_est || {};\n        const c = String(e.conf || '').toLowerCase();\n        const ancho = (Number(e.max) || 0) - (Number(e.min) || 0);\n        if (e.min == null || e.max == null) return c;\n        return ancho > 600 ? 'baja' : (c || 'media');\n      })(),\n      salary_range: String(s.salary_posted || '').substring(0, 255),\n      status: 'scored',\n      fit_score: Number(s.fit_score) || 0, which_cv: s.which_cv || '',\n      language: s.language || '', salary_note: s.salary_note || '',\n      unverified_numbers: v.unverified_numbers || [],\n      description_truncated: !!job.description_truncated,\n      description_source: job.description_source || '',\n      frictions: job.frictions || [],\n      blocked: false,\n      telegram_chunks: []\n    }\n  };\n}\n\nconst answers = Array.isArray(s.answers) ? s.answers : [];\n\n// ---- Telegram en varios mensajes\n// Telegram corta en 4096 caracteres. Antes, si la aplicacion tenia muchas\n// preguntas, el mensaje se reemplazaba por \"ve la extension\" y las respuestas\n// no se veian en ningun lado. Ahora se parte y se manda una atras de otra.\nconst partes = [];\nif (avisos.length) partes.push(avisos.map(esc).join('\\n'));\npartes.push('📝 <b>' + esc(title) + '</b>\\n🏢 ' + esc(company) +\n  '\\nCV: ' + esc(s.which_cv || '') + '  |  ' + esc(String(s.language || '').toUpperCase()));\nif (String(s.cover_letter || '').trim()) {\n  partes.push('✉️ <b>Cover letter:</b>\\n' + esc(s.cover_letter));\n}\nanswers.forEach((a, i) => {\n  partes.push('❓ <b>' + (i + 1) + '. ' + esc(a.question) + '</b>\\n' + esc(a.answer));\n});\n\nconst LIMITE = 3500;\nconst chunks = [];\nlet actual = '';\nfor (const p of partes) {\n  // una parte sola mas larga que el limite se corta por lineas\n  if (p.length > LIMITE) {\n    if (actual) { chunks.push(actual); actual = ''; }\n    let resto = p;\n    while (resto.length > LIMITE) {\n      let corte = resto.lastIndexOf('\\n', LIMITE);\n      if (corte < LIMITE * 0.5) corte = LIMITE;\n      chunks.push(resto.slice(0, corte));\n      resto = resto.slice(corte).replace(/^\\n/, '');\n    }\n    if (resto) actual = resto;\n    continue;\n  }\n  if ((actual + '\\n\\n' + p).length > LIMITE) { chunks.push(actual); actual = p; }\n  else { actual = actual ? (actual + '\\n\\n' + p) : p; }\n}\nif (actual) chunks.push(actual);\n\nconst total = chunks.length;\nconst numerados = chunks.map((c, i) => (total > 1 ? ('<i>(' + (i + 1) + '/' + total + ')</i>\\n') : '') + c);\n\nreturn {\n  json: {\n    mode: 'apply', external_id: extId, title: title, company: company, url: job.url || '',\n    which_cv: s.which_cv || '', language: s.language || '', salary_note: s.salary_note || '',\n    salary_posted: String(s.salary_posted || '').substring(0, 120),\n    cover_letter: s.cover_letter || '', answers: answers,\n    unverified_numbers: v.unverified_numbers || [],\n    description_truncated: !!job.description_truncated,\n    description_source: job.description_source || '',\n    frictions: job.frictions || [],\n    blocked: false,\n    stop_reason: v._stop_reason || '',\n    telegram_chunks: numerados,\n    telegram_message: numerados[0] || ''\n  }\n};\n"
       },
-      "id": "cl-format",
       "name": "Parse & Format",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1120,
-        304
+        2032,
+        240
       ]
     },
     {
       "parameters": {
         "chatId": "YOUR_TELEGRAM_CHAT_ID",
-        "text": "={{ $('Parse & Format').item.json.telegram_message }}",
+        "text": "={{ $json.chunk }}",
         "additionalFields": {
           "appendAttribution": false,
           "disable_web_page_preview": true,
           "parse_mode": "HTML"
         }
       },
-      "id": "cl-tg",
       "name": "Send Cover Letter",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        1344,
-        208
+        3152,
+        240
       ],
-      "webhookId": "d602d71d-be81-45ee-aa4d-51044deb7934"
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram bot"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "create",
-        "tableId": "job_applications",
-        "fieldsUi": {
-          "fieldValues": [
-            {
-              "fieldId": "source",
-              "fieldValue": "={{ $json.source }}"
-            },
-            {
-              "fieldId": "external_id",
-              "fieldValue": "={{ $json.external_id }}"
-            },
-            {
-              "fieldId": "title",
-              "fieldValue": "={{ $json.title }}"
-            },
-            {
-              "fieldId": "company",
-              "fieldValue": "={{ $json.company }}"
-            },
-            {
-              "fieldId": "url",
-              "fieldValue": "={{ $json.url }}"
-            },
-            {
-              "fieldId": "description",
-              "fieldValue": "={{ $json.description }}"
-            },
-            {
-              "fieldId": "score",
-              "fieldValue": "={{ $json.score }}"
-            },
-            {
-              "fieldId": "verdict",
-              "fieldValue": "={{ $json.verdict }}"
-            },
-            {
-              "fieldId": "top_reasons",
-              "fieldValue": "={{ JSON.stringify($json.top_reasons) }}"
-            },
-            {
-              "fieldId": "red_flags",
-              "fieldValue": "={{ JSON.stringify($json.red_flags) }}"
-            },
-            {
-              "fieldId": "recommendation",
-              "fieldValue": "={{ $json.recommendation }}"
-            },
-            {
-              "fieldId": "salary_range",
-              "fieldValue": "={{ $json.salary_range }}"
-            },
-            {
-              "fieldId": "status",
-              "fieldValue": "={{ $json.status }}"
-            }
-          ]
+        "operation": "executeQuery",
+        "query": "insert into public.job_applications\n  (source, external_id, title, company, url, description, score, verdict,\n   top_reasons, red_flags, recommendation, salary_range, status)\nvalues ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13)\non conflict (external_id) do update set\n  title = excluded.title,\n  company = excluded.company,\n  url = excluded.url,\n  description = excluded.description,\n  score = excluded.score,\n  verdict = excluded.verdict,\n  top_reasons = excluded.top_reasons,\n  red_flags = excluded.red_flags,\n  recommendation = excluded.recommendation,\n  salary_range = excluded.salary_range,\n  status = case when job_applications.status = 'applied' then 'applied' else excluded.status end\nreturning id, external_id, status;",
+        "options": {
+          "queryReplacement": "={{ [$json.source, $json.external_id, $json.title, $json.company, $json.url, $json.description, $json.score, $json.verdict, JSON.stringify($json.top_reasons || []), JSON.stringify($json.red_flags || []), $json.recommendation, $json.salary_range, $json.status] }}"
         }
       },
-      "id": "cl-save",
       "name": "Save Score",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
       "position": [
-        1344,
-        400
+        2480,
+        336
       ],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cl-tgtrigger",
-      "name": "Telegram Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        240,
-        540
-      ],
       "parameters": {
         "updates": [
           "message"
         ],
         "additionalFields": {}
       },
-      "webhookId": "cl-tg-trigger-001"
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        336
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "YOUR_TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram bot"
+        }
+      }
     },
     {
-      "id": "cl-parsetg",
+      "parameters": {
+        "jsCode": "const m = $input.first().json;\nconst text = (m.message && m.message.text) || m.text || '';\nreturn [{ json: { mode: 'apply', title: '', company: '', description: String(text).substring(0, 8000), url: '', questions: [] } }];"
+      },
       "name": "Parse Telegram",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        460,
-        540
-      ],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const m = $input.first().json;\nconst text = (m.message && m.message.text) || m.text || '';\nreturn [{ json: { mode: 'apply', title: '', company: '', description: String(text).substring(0, 8000), url: '', questions: [] } }];"
-      }
+        464,
+        336
+      ]
     },
     {
-      "id": "cl-respond",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Parse & Format').first().json) }}",
+        "options": {}
+      },
       "name": "Respond to Extension",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1560,
-        320
+        2704,
+        240
       ],
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($('Parse & Format').item.json) }}",
-        "options": {}
-      },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cl-saveapp",
-      "name": "Save App Row",
-      "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1,
-      "position": [
-        1600,
-        480
-      ],
       "parameters": {
-        "operation": "create",
         "tableId": "applications",
         "fieldsUi": {
           "fieldValues": [
@@ -282,17 +234,22 @@
           ]
         }
       },
+      "name": "Save App Row",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        144
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      },
       "onError": "continueRegularOutput"
     },
     {
-      "id": "cl-isapply",
-      "name": "Is Apply?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1360,
-        360
-      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -312,8 +269,231 @@
             }
           ],
           "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Apply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select key, value from public.profile_facts where verified_bool = true\nunion all\nselect '_mercado', public.salary_market_prompt()\norder by key;",
+        "options": {}
+      },
+      "name": "Load Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        688,
+        240
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Screen Blockers  (mode: runOnceForAllItems)\n// Entra: filas de profile_facts (Load Profile). Sale: UN item con el job, el\n// PERFIL armado y el resultado del screening.\n//\n// Port de scripts/screen.py de la skill job-hunt. La idea es no gastar una\n// llamada a Claude en una oferta que ya esta descartada, y dejar la razon\n// escrita en la fila para que despues se pueda auditar.\n\n// ---- job de origen: webhook de la extension o trigger de Telegram\nlet job = null;\ntry { job = $('Parse Input').first().json; } catch (e) {}\nif (!job) { try { job = $('Parse Telegram').first().json; } catch (e) {} }\nif (!job) throw new Error('No pude recuperar el job ni de Parse Input ni de Parse Telegram');\n\n// ---- perfil verificado\nconst rows = $input.all().map(i => i.json).filter(r => r && r.key);\nif (!rows.length) throw new Error('profile_facts vino vacia: no genero nada con un perfil vacio');\n\nconst prof = {};\nfor (const r of rows) prof[r.key] = r.value;\n\nconst ORDER = [\n  'identity', 'role_employer', 'employer_scope', 'employer_pipeline',\n  'employer_crm', 'employer_alerting', 'role_side_project', 'stack', 'apis',\n  'education', 'contact', 'experience_years', 'availability', 'title_rule',\n  'salary_rule', 'red_flags_rule'\n];\n// _mercado no es un dato del perfil: es la referencia salarial y viaja aparte,\n// para que el modelo no la confunda con algo que Santiago declaro sobre si mismo.\nconst keys = ORDER.filter(k => prof[k])\n  .concat(Object.keys(prof).filter(k => !ORDER.includes(k) && k !== '_mercado'));\nconst PERFIL = 'PERFIL DE SANTIAGO (unica fuente de verdad):\\n' +\n  keys.map(k => '- ' + prof[k]).join('\\n');\n\nlet yearsAvailable = 1.5;\nconst ym = String(prof.experience_years || '').match(/(\\d+(?:[.,]\\d+)?)/);\nif (ym) yearsAvailable = parseFloat(ym[1].replace(',', '.'));\n\n// ---- blockers\nconst LANGUAGE_REQUIRED = new RegExp(\n  '\\\\(m\\\\s*\\\\/\\\\s*[wf]\\\\s*\\\\/\\\\s*d\\\\)' +\n  '|(?:very good|good|fluent|native|excellent|strong|advanced|business|professional)\\\\s+' +\n  '(?:german|deutsch|french|fran[cç]ais|dutch|nederlands|italian|italiano|' +\n  'portuguese|portugu[eê]s|japanese|mandarin|chinese|korean|polish|swedish|norwegian)' +\n  '|(?:german|french|dutch|italian|portuguese|japanese|mandarin|polish|swedish)\\\\s+' +\n  '(?:language\\\\s+)?(?:skills|proficiency|fluency|required|is a must|mandatory)' +\n  '|(?:fluency|fluent)\\\\s+in\\\\s+' +\n  '(?:german|french|dutch|italian|portuguese|japanese|mandarin|polish|swedish)' +\n  '|nivel\\\\s+(?:alto|nativo)\\\\s+de\\\\s+(?:alem[aá]n|franc[eé]s|italiano|portugu[eé]s)' +\n  '|\\\\b(?:c1|c2|b2)\\\\s+(?:level\\\\s+)?(?:german|french|dutch|italian|portuguese)', 'i');\n\nconst RESIDENCY_LOCK = new RegExp(\n  '(?:100%\\\\s+)?remote\\\\s+from\\\\s+(?:spain|germany|france|italy|poland|portugal|' +\n  'netherlands|india|uk|the uk|canada|mexico|colombia|brazil)\\\\b' +\n  '|(?:must|should)\\\\s+(?:be\\\\s+)?(?:resid\\\\w+|living|located|based)\\\\s+in\\\\s+' +\n  '(?:spain|germany|france|italy|poland|portugal|netherlands|india|the uk|uk|canada|eu|europe)' +\n  '|(?:spain|germany|france|italy|poland|portugal|netherlands|india|uk|canada|eu|europe|emea)[\\\\s-]only' +\n  '|only\\\\s+(?:candidates|applicants)\\\\s+(?:from|based in|residing in|located in)' +\n  '|(?:eu|european)\\\\s+(?:work\\\\s+)?(?:permit|citizenship|residency)\\\\s+(?:required|mandatory)' +\n  '|right to work in the (?:uk|eu|netherlands|germany|spain)'\n  // El aviso de RenegadesMedia decia \"Fully Remote Opportunity within the\n  // United States\" y pasaba limpio: el patron solo miraba \"remote FROM x\".\n  // \"Remoto DENTRO de\" es la misma restriccion escrita al reves.\n  + '|remote\\\\s+(?:opportunity|position|role|work)?\\\\s*within\\\\s+the\\\\s+(?:united states|u\\\\.?s\\\\.?a?\\\\b)'\n  + '|must\\\\s+(?:reside|be\\\\s+located|be\\\\s+based)\\\\s+(?:in|within)\\\\s+the\\\\s+(?:united states|u\\\\.?s\\\\.?a?\\\\b)'\n  + '|(?:us|u\\\\.s\\\\.|united states)\\\\s+(?:residents?|citizens?|based candidates?)\\\\s+only'\n  + '|authorized\\\\s+to\\\\s+work\\\\s+in\\\\s+the\\\\s+(?:united states|u\\\\.?s\\\\.?a?\\\\b)', 'i');\n\nconst NOT_ENGINEERING = new RegExp(\n  'train(?:ing)?\\\\s+(?:the\\\\s+)?next[- ]generation\\\\s+ai' +\n  '|help\\\\s+train\\\\s+ai\\\\s+(?:models|systems)' +\n  '|shape\\\\s+how\\\\s+models\\\\s+learn' +\n  '|no\\\\s+prior\\\\s+experience\\\\s+in\\\\s+ai\\\\s+is\\\\s+required' +\n  '|your\\\\s+domain\\\\s+knowledge\\\\s+is\\\\s+what\\\\s+matters' +\n  '|evaluate\\\\s+and\\\\s+enhance\\\\s+ai\\\\s+model\\\\s+capabilities' +\n  '|(?:high[- ]quality|real[- ]world)\\\\s+(?:human\\\\s+)?(?:input|feedback|annotations?)\\\\s+' +\n  '(?:for|to)\\\\s+(?:train|improve)' +\n  '|data\\\\s+annotat(?:ion|or)|labeling\\\\s+(?:tasks|work)' +\n  '|ai\\\\s+trainer\\\\b|rlhf\\\\s+contributor', 'i');\n\nconst BLOCKERS = [\n  ['working language is not English or Spanish', LANGUAGE_REQUIRED],\n  ['residency or work authorization lock', RESIDENCY_LOCK],\n  ['AI training data work, not an engineering role', NOT_ENGINEERING]\n];\n\nconst FOREIGN_STACKS = {\n  'Microsoft/.NET': ['\\\\bc#', '\\\\.net\\\\b', 'azure functions', 'azure app service',\n    'dynamics 365', 'dataverse', 'power platform', 'entra id',\n    'semantic kernel', 'autogen', 'sharepoint', 'power automate'],\n  'Java/JVM': ['\\\\bjava\\\\b', 'spring boot', '\\\\bkotlin\\\\b', '\\\\bscala\\\\b', 'hibernate', 'maven'],\n  'Salesforce': ['\\\\bapex\\\\b', 'salesforce', 'lightning web', 'visualforce', 'soql'],\n  'Ruby': ['\\\\bruby\\\\b', 'rails\\\\b', 'activerecord'],\n  'PHP': ['\\\\bphp\\\\b', 'laravel', 'symfony', 'wordpress'],\n  'Go/Rust/C++': ['\\\\bgolang\\\\b', '\\\\brust\\\\b', '\\\\bc\\\\+\\\\+'],\n  'Data/ML research': ['pytorch', 'tensorflow', 'scikit-learn', 'model training',\n    'fine[- ]tun\\\\w+ (?:models|llms)', 'mlops', 'feature store']\n};\n\nconst HOME_STACK = ['\\\\bn8n\\\\b', 'make\\\\.com', 'zapier', 'supabase', 'postgres', 'node\\\\.?js',\n  '\\\\bpython\\\\b', 'typescript', 'javascript', 'next\\\\.?js', '\\\\breact\\\\b',\n  'webhook', 'rest api', '\\\\bdocker\\\\b', 'workflow automation', 'gohighlevel',\n  '\\\\bllm\\\\b', 'openai', 'claude', 'ai agent', 'agentic'];\n\nconst FRICTIONS = [\n  ['fixed working hours in another timezone',\n    '\\\\d{1,2}\\\\s*(?::\\\\d\\\\d)?\\\\s*(?:am|pm)?\\\\s*(?:to|-|–)\\\\s*\\\\d{1,2}\\\\s*(?::\\\\d\\\\d)?\\\\s*' +\n    '(?:am|pm)?\\\\s*(?:est|edt|pst|pdt|cst|cet|gmt|utc)|core hours|must overlap|overlap of at least'],\n  ['time tracking software required',\n    'time tracker|time[- ]tracking (?:software|tool)|hubstaff|timedoctor|screenshot'],\n  ['unpaid or lengthy assessment',\n    'take[- ]home (?:assignment|project|test)|series of assessments|unpaid (?:trial|test)|\\\\d+\\\\s*hour (?:assignment|assessment|task)'],\n  ['customer facing seniority expected',\n    'client[- ]facing|customer[- ]facing|stakeholder management|lead (?:the )?discovery'],\n  ['on call or production support duty',\n    'on[- ]call|pager duty|pagerduty|24/7|rotation'],\n  ['equity or commission heavy compensation',\n    'equity[- ]only|commission[- ]based|profit shar|revenue shar']\n];\n\nconst blob = String(job.title || '') + '\\n' + String(job.description || '');\nconst frictionsIdioma = [];\nconst low = blob.toLowerCase();\nconst count = (pats) => pats.reduce((n, p) => n + (new RegExp(p, 'i').test(low) ? 1 : 0), 0);\nconst evidence = (m) => {\n  const s = Math.max(0, m.index - 70);\n  const e = Math.min(blob.length, m.index + m[0].length + 70);\n  return blob.slice(s, e).split(/\\s+/).join(' ');\n};\n\n// Un idioma listado como deseable NO bloquea. El aviso de Clara decia\n// \"Portuguese proficiency (not required, but useful...)\" y el screening lo mataba\n// igual, porque el patron miraba \"portuguese ... proficiency\" sin leer alrededor.\n// Un bloqueo tiene que significar \"no podes tomar este trabajo\", nunca \"el aviso\n// nombro un idioma\". Cuando el contexto dice que es opcional, baja a friccion.\nconst OPCIONAL = new RegExp(\n  'not\\\\s+required|nice[- ]to[- ]have|is\\\\s+a\\\\s+plus|a\\\\s+plus\\\\b|bonus|' +\n  'preferred|desirable|desired|advantage(?:ous)?|would\\\\s+be\\\\s+great|' +\n  'valorable|deseable|no\\\\s+excluyente|opcional|se\\\\s+valora|plus\\\\b', 'i');\n\nconst esOpcional = (m) => {\n  // ventana generosa hacia atras (el \"nice to have:\" suele encabezar la lista)\n  // y corta hacia adelante (el parentesis aclaratorio va pegado).\n  const antes = blob.slice(Math.max(0, m.index - 220), m.index);\n  const despues = blob.slice(m.index, Math.min(blob.length, m.index + m[0].length + 140));\n  return OPCIONAL.test(antes) || OPCIONAL.test(despues);\n};\n\nconst blockers = [];\nfor (const [label, pat] of BLOCKERS) {\n  const m = pat.exec(blob);\n  if (!m) continue;\n  const idioma = label.indexOf('working language') === 0;\n  if (idioma && esOpcional(m)) {\n    frictionsIdioma.push({ reason: label.replace('is not', 'nombrado como deseable, no es'),\n                           evidence: evidence(m) });\n    continue;\n  }\n  blockers.push({ reason: label, evidence: evidence(m) });\n}\n\nconst home = count(HOME_STACK);\nconst foreign = {};\nfor (const k of Object.keys(FOREIGN_STACKS)) foreign[k] = count(FOREIGN_STACKS[k]);\nlet worst = '', worstN = 0;\nfor (const k of Object.keys(foreign)) if (foreign[k] > worstN) { worst = k; worstN = foreign[k]; }\nif (worstN >= 4 && worstN > home) {\n  blockers.push({\n    reason: 'stack mismatch, posting is ' + worst + ' heavy',\n    evidence: worstN + ' ' + worst + ' signals against ' + home + ' matching your stack'\n  });\n}\n\nconst frictions = frictionsIdioma.slice();\nfor (const [label, pat] of FRICTIONS) {\n  const m = new RegExp(pat, 'i').exec(blob);\n  if (m) frictions.push({ reason: label, evidence: evidence(m) });\n}\n\nconst YEARS = /(\\d+)\\s*(?:\\+|to\\s*\\d+|-\\s*\\d+)?\\s*(?:\\+\\s*)?years?[^.]{0,40}?(?:experience|exp\\b|working|in\\s+a|of)/gi;\nconst asked = [];\nlet ym2;\nwhile ((ym2 = YEARS.exec(blob)) !== null) {\n  const n = parseInt(ym2[1], 10);\n  if (n <= 20) asked.push(n);\n}\nconst yearsRequired = asked.length ? Math.max.apply(null, asked) : null;\nif (yearsRequired && yearsRequired - yearsAvailable >= 2) {\n  frictions.push({\n    reason: 'asks ' + yearsRequired + ' years, you have about ' + yearsAvailable,\n    evidence: 'gap of ' + (yearsRequired - yearsAvailable).toFixed(1) + ' years'\n  });\n}\n\nconst extId = String(job.url || ('cl-' + Date.now())).split('?')[0].substring(0, 255);\n\nreturn [{\n  json: Object.assign({}, job, {\n    external_id: extId,\n    _perfil: PERFIL,\n    _mercado: prof._mercado || '',\n    _profile_keys: keys,\n    blocked: blockers.length > 0,\n    block_reasons: blockers,\n    frictions: frictions,\n    years_required: yearsRequired,\n    home_stack_signals: home,\n    foreign_stack: foreign,\n    screen_verdict: blockers.length ? 'blocked' : (frictions.length ? 'friction' : 'clear')\n  })\n}];\n"
+      },
+      "name": "Screen Blockers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "b1",
+              "leftValue": "={{ $json.blocked }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Blocked?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.job_applications\n  (source, external_id, title, company, url, description, score, verdict,\n   top_reasons, red_flags, recommendation, salary_range, status)\nvalues ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11,$12,$13)\non conflict (external_id) do update set\n  title = excluded.title,\n  company = excluded.company,\n  url = excluded.url,\n  description = excluded.description,\n  score = excluded.score,\n  verdict = excluded.verdict,\n  top_reasons = excluded.top_reasons,\n  red_flags = excluded.red_flags,\n  recommendation = excluded.recommendation,\n  salary_range = excluded.salary_range,\n  status = case when job_applications.status = 'applied' then 'applied' else excluded.status end\nreturning id, external_id, status;",
+        "options": {
+          "queryReplacement": "={{ [$json.source, $json.external_id, $json.title, $json.company, $json.url, $json.description, $json.score, $json.verdict, JSON.stringify($json.top_reasons || []), JSON.stringify($json.red_flags || []), $json.recommendation, $json.salary_range, $json.status] }}"
+        }
+      },
+      "name": "Save Blocked",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1584,
+        48
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prep Blocked  (mode: runOnceForEachItem)\n// Arma la fila y la respuesta para una oferta descartada, sin gastar una\n// llamada a Claude.\nconst j = $input.item.json;\nconst reasons = (j.block_reasons || []).map(b => b.reason);\nreturn {\n  json: {\n    mode: j.mode || 'apply',\n    blocked: true,\n    source: 'linkedin_blocked',\n    external_id: j.external_id,\n    title: String(j.title || 'Oferta').substring(0, 480),\n    company: String(j.company || '').substring(0, 240),\n    url: j.url || '',\n    description: String(j.description || '').substring(0, 4000),\n    score: 0,\n    verdict: '',\n    top_reasons: reasons,\n    red_flags: (j.block_reasons || []).map(b => b.reason + ': ' + b.evidence),\n    recommendation: '',\n    salary_range: '',\n    status: 'blocked',\n    block_reasons: j.block_reasons || [],\n    frictions: j.frictions || [],\n    description_source: j.description_source || '',\n    description_truncated: !!j.description_truncated\n  }\n};\n"
+      },
+      "name": "Prep Blocked",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Prep Blocked').first().json) }}",
+        "options": {}
+      },
+      "name": "Respond Blocked",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1808,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Validate Numbers  (mode: runOnceForEachItem)\n// Entre Generate with Claude y Parse & Format.\n//\n// No descarta nada: extrae todo numero que el modelo escribio y lo contrasta\n// contra PERFIL. Lo que no tiene respaldo viaja como unverified_numbers y se\n// muestra arriba del mensaje, para que el problema se vea ANTES de que el texto\n// termine pegado en una aplicacion real.\n\nconst resp = $input.item.json;\nconst perfil = $('Build Prompt').item.json._perfil || '';\n\nconst stopReason = resp.stop_reason || '';\nconst raw = (resp.content && resp.content[0] && resp.content[0].text) || '';\n\nlet parsed = null;\nlet parseError = '';\ntry {\n  const m = String(raw).match(/\\{[\\s\\S]*\\}/);\n  parsed = JSON.parse(m ? m[0] : raw);\n} catch (e) {\n  parseError = e.message;\n}\n\n// max_tokens es la causa mas comun de JSON cortado. Se reporta explicito en vez\n// de dejar que JSON.parse tire un error sin contexto.\nif (!parsed) {\n  parsed = {\n    job_title: '', company_name: '', language: 'es', fit_score: 0,\n    top_reasons: [], red_flags: [], which_cv: 'EN', salary_note: '', salary_posted: '', salary_est: null,\n    cover_letter: '', answers: []\n  };\n  if (stopReason === 'max_tokens') {\n    parsed.top_reasons = ['La respuesta se corto por limite de tokens (max_tokens). Reduci la cantidad de preguntas o subi el limite.'];\n  } else {\n    parsed.top_reasons = ['El modelo no devolvio JSON valido: ' + parseError];\n  }\n}\n\n// ---- numeros escritos por el modelo\nconst textos = [];\nif (parsed.cover_letter) textos.push(String(parsed.cover_letter));\nif (Array.isArray(parsed.answers)) {\n  for (const a of parsed.answers) {\n    if (a && a.answer) textos.push(String(a.answer));\n  }\n}\nif (parsed.salary_note) textos.push(String(parsed.salary_note));\n\nconst NUM = /\\d+(?:[.,]\\d+)?/g;\nconst vistos = new Set();\nconst unverified = [];\n\nfor (let t of textos) {\n  // lo que esta dentro de un placeholder no cuenta como afirmacion\n  t = t.replace(/\\[FALTA DATO[^\\]]*\\]/gi, ' ');\n  let m;\n  NUM.lastIndex = 0;\n  while ((m = NUM.exec(t)) !== null) {\n    const n = m[0];\n    if (vistos.has(n)) continue;\n    vistos.add(n);\n    // respaldo = el numero aparece textual en PERFIL\n    if (perfil.indexOf(n) === -1) {\n      const s = Math.max(0, m.index - 40);\n      const e = Math.min(t.length, m.index + n.length + 40);\n      unverified.push({ number: n, context: t.slice(s, e).split(/\\s+/).join(' ') });\n    }\n  }\n}\n\nreturn {\n  json: {\n    _llm: parsed,\n    _stop_reason: stopReason,\n    _parse_error: parseError,\n    unverified_numbers: unverified,\n    numbers_checked: vistos.size\n  }\n};\n"
+      },
+      "name": "Validate Numbers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Chunks  (mode: runOnceForAllItems)\n// Un item por mensaje de Telegram. En modo score no hay chunks, devuelve [] y\n// el nodo de Telegram directamente no corre.\nlet chunks = [];\ntry { chunks = $('Parse & Format').first().json.telegram_chunks || []; } catch (e) { chunks = []; }\nreturn chunks.map((ch, i) => ({ json: { chunk: ch, i: i + 1, total: chunks.length } }));\n"
+      },
+      "name": "Split Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job-applied",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Applied Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.job_applications\n  (source, external_id, title, company, url, status, applied_at)\nvalues ('extension_applied', $1, $2, $3, $4, 'applied', now())\non conflict (external_id) do update set\n  status = 'applied',\n  applied_at = now(),\n  title = coalesce(nullif(excluded.title, ''), job_applications.title),\n  company = coalesce(nullif(excluded.company, ''), job_applications.company)\nreturning id, external_id, title, company, status, applied_at;",
+        "options": {
+          "queryReplacement": "={{ [$json.body.external_id, $json.body.title || \"\", $json.body.company || \"\", $json.body.url || \"\"] }}"
+        }
+      },
+      "name": "Mark Applied",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        464,
+        656
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, external_id: $json.external_id, status: $json.status, applied_at: $json.applied_at }) }}",
+        "options": {}
+      },
+      "name": "Respond Applied",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Sin esto el workflow moria en el nodo del modelo, nunca llegaba a un Respond\n// to Webhook, y la extension recibia 200 con body vacio. El mensaje que mostraba\n// entonces (\"revisa que el workflow termine en un Respond to Webhook\") mandaba a\n// buscar un problema de configuracion que no existia.\n//\n// La forma del error de n8n es { error: { message, description, ... } }, no\n// { message } pelado: leerlo mal devolvia \"[object Object]\" al usuario.\nconst j = $input.first().json || {};\nconst e = j.error || j;\nconst detalle = String(e.description || e.message || j.message || 'sin detalle').slice(0, 300);\nconst crudo = JSON.stringify(j);\n\nlet humano = detalle;\nif (/usage limit/i.test(crudo)) {\n  humano = 'La cuenta de Anthropic llego al limite de uso configurado. Subilo en ' +\n           'Plans and Billing de console.anthropic.com. ' + detalle;\n} else if (/credit balance/i.test(crudo)) {\n  humano = 'La cuenta de Anthropic se quedo sin credito. Carga saldo en Plans and Billing.';\n} else if (/rate.?limit|\\b429\\b/i.test(crudo)) {\n  humano = 'Rate limit de la API. Espera unos segundos y volve a intentar.';\n} else if (/timeout|ETIMEDOUT|ECONNRESET|socket hang up/i.test(crudo)) {\n  humano = 'La llamada al modelo se corto por timeout. Volve a intentar.';\n} else if (/overloaded|529/i.test(crudo)) {\n  humano = 'La API esta sobrecargada en este momento. Volve a intentar en un minuto.';\n}\n\nreturn [{ json: { ok: false, error: humano, etapa: 'generate', detalle: detalle } }];\n"
+      },
+      "name": "Explicar la falla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "Responder la falla",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2032,
+        432
+      ]
     }
   ],
   "connections": {
@@ -332,29 +512,7 @@
       "main": [
         [
           {
-            "node": "Build Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Prompt": {
-      "main": [
-        [
-          {
-            "node": "Generate with Claude",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parse & Format": {
-      "main": [
-        [
-          {
-            "node": "Is Apply?",
+            "node": "Load Profile",
             "type": "main",
             "index": 0
           }
@@ -376,7 +534,80 @@
       "main": [
         [
           {
+            "node": "Load Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Profile": {
+      "main": [
+        [
+          {
+            "node": "Screen Blockers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Screen Blockers": {
+      "main": [
+        [
+          {
+            "node": "Blocked?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blocked?": {
+      "main": [
+        [
+          {
+            "node": "Prep Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Blocked": {
+      "main": [
+        [
+          {
+            "node": "Save Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Blocked": {
+      "main": [
+        [
+          {
+            "node": "Respond Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate with Claude",
             "type": "main",
             "index": 0
           }
@@ -387,7 +618,36 @@
       "main": [
         [
           {
+            "node": "Validate Numbers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Explicar la falla",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Numbers": {
+      "main": [
+        [
+          {
             "node": "Parse & Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Format": {
+      "main": [
+        [
+          {
+            "node": "Is Apply?",
             "type": "main",
             "index": 0
           }
@@ -416,17 +676,6 @@
       "main": [
         [
           {
-            "node": "Send Cover Letter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Send Cover Letter": {
-      "main": [
-        [
-          {
             "node": "Respond to Extension",
             "type": "main",
             "index": 0
@@ -439,6 +688,61 @@
         [
           {
             "node": "Respond to Extension",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Extension": {
+      "main": [
+        [
+          {
+            "node": "Split Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Chunks": {
+      "main": [
+        [
+          {
+            "node": "Send Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Applied Webhook": {
+      "main": [
+        [
+          {
+            "node": "Mark Applied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Applied": {
+      "main": [
+        [
+          {
+            "node": "Respond Applied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explicar la falla": {
+      "main": [
+        [
+          {
+            "node": "Responder la falla",
             "type": "main",
             "index": 0
           }

@@ -15,23 +15,61 @@ It also sidesteps a real constraint: **LinkedIn's CSP blocks page scripts from c
 ## How it works
 
 ```
-┌─────────────────────┐     job posting (DOM)      ┌──────────────────────────────┐
-│  Chrome Extension   │ ───────────────────────▶   │  n8n webhook                 │
-│  (reads the page)   │                            │   1. Parse input             │
-│   🎯 Score          │                            │   2. Build prompt (my CV     │
-│   ✉️ Apply          │ ◀───── JSON response ───── │      context, mode-aware)    │
-└─────────────────────┘   cover letter + answers   │   3. Claude (Sonnet)         │
-                                                    │   4. Save to Supabase        │
-                                                    │   5. Notify on Telegram      │
-                                                    └──────────────────────────────┘
+┌─────────────────────┐   job posting (DOM)   ┌────────────────────────────────────┐
+│  Chrome Extension   │ ──────────────────▶   │  n8n webhook                       │
+│  (reads the page)   │                       │   1. Parse input                   │
+│   🎯 Score          │                       │   2. Load profile from Postgres    │
+│   ✉️ Apply          │ ◀─── JSON response ── │   3. Screen for blockers ──┐       │
+└─────────────────────┘  cover letter+answers │   4. Claude (Sonnet)       │       │
+                                              │   5. Validate numbers      │       │
+                                              │   6. Save + notify         │       │
+                                              │      ◀─────────────────────┘       │
+                                              │        blocked → save & reply,     │
+                                              │        no model call               │
+                                              └────────────────────────────────────┘
 ```
 
 Two modes, two buttons:
 
-- **🎯 Score** — fast fit evaluation (0–100) + reasons + red flags. Saved to a `scores` table. Used to triage which jobs are worth applying to.
-- **✉️ Apply** — generates a tailored cover letter + an answer for each screening question you paste in. Saved to an `applications` table and pushed to Telegram.
+- **🎯 Score** — fast fit evaluation (0–100) + reasons + red flags. Used to triage which jobs are worth applying to.
+- **✉️ Apply** — generates a tailored cover letter + an answer for each screening question you paste in. Pushed to Telegram.
 
-The LLM prompt is loaded with my real profile and instructed to stay honest (it scores a Lead/5+-years role *low* and flags it, instead of inflating the match).
+Both land in a `job_applications` table in Postgres, so a posting that was screened out stays on record with the reason.
+
+### The profile is data, not prompt text
+
+The prompt does **not** carry a hardcoded CV. On every run, `Load Profile` reads a
+`profile_facts` table and takes only the rows where `verified_bool` is true:
+
+```sql
+select key, value from public.profile_facts where verified_bool = true
+```
+
+Anything unverified simply never reaches the model. Correcting a claim, retiring a
+number that no longer has backing, or changing how a role is described is a row
+update — not an edit to a prompt buried in a workflow export. The salary reference
+comes back through a separate `_mercado` key so the model can't mistake market data
+for something the candidate asserted about himself.
+
+### Screening runs before the model does
+
+`Screen Blockers` evaluates the posting against the profile **before** any Claude call:
+years of experience demanded vs. available, and other hard blockers. If the posting is
+disqualified, the workflow writes the row with its reason and replies to the extension
+directly — the model call never happens. A job that was never going to work costs no
+tokens, and the reason is on record to audit later.
+
+### The model's numbers get checked
+
+`Validate Numbers` sits between the Claude call and the response. It extracts every
+number the model wrote across the cover letter and the answers, and checks each one
+against the profile it was given. Anything without backing is returned as
+`unverified_numbers` and surfaced at the top of the message, so an invented figure is
+visible *before* the text gets pasted into a real application. It discards nothing and
+decides nothing — it just refuses to let a fabricated number pass silently.
+
+It also reports the failure mode explicitly when the response isn't usable: a JSON body
+truncated by `max_tokens` is named as such, instead of surfacing as a bare parse error.
 
 ## Repo contents
 
@@ -40,15 +78,13 @@ The LLM prompt is loaded with my real profile and instructed to stay honest (it 
 
 ## Run it yourself
 
-1. **Backend:** import `workflow/cover-letter-generator.json` into n8n, add your Anthropic + Supabase + Telegram credentials, and create the `applications` / `job_applications` tables.
-2. **Extension:** in `extension/popup.js`, set `WEBHOOK` to your n8n webhook URL. Then `chrome://extensions` → Developer mode → **Load unpacked** → select `extension/`.
-3. Open a job posting, click **Score** or **Apply**.
+1. **Backend:** import `workflow/cover-letter-generator.json` into n8n, add your Anthropic + Supabase/Postgres + Telegram credentials, and create the `profile_facts` and `job_applications` tables.
+2. **Profile:** fill `profile_facts` with your own `key` / `value` rows and mark the ones you can stand behind as `verified_bool = true`. The workflow refuses to run against an empty profile rather than inventing one.
+3. **Extension:** in `extension/popup.js`, set `WEBHOOK` to your n8n webhook URL. Then `chrome://extensions` → Developer mode → **Load unpacked** → select `extension/`.
+4. Open a job posting, click **Score** or **Apply**.
 
-> Secrets (API keys, tokens, chat IDs, instance URL) are redacted with `REDACTED_*` / `YOUR_*` placeholders.
-
-## Screenshots
-
-_TODO: add screenshots of the popup (score view + apply view) and a Telegram notification._
+> The export is sanitized: credential IDs, chat IDs and webhook IDs are `YOUR_*`
+> placeholders. Nothing about a real profile is in this file — it lives in the database.
 
 ---
 
